@@ -13,7 +13,7 @@ body{margin:0;font-family:sans-serif;background:url("space.jpg") center/cover no
 @media(max-width:767px){#container{flex-direction:column;align-items:center;} :root{--cell-size:min(9vw,40px);}}
 #game{padding:10px;background:rgba(0,0,20,.6);border-radius:6px;position:relative;transition:filter .5s;}
 #game.last-dark{filter:brightness(0.5) contrast(1.2);animation:heartbeat 1s infinite;}
-@keyframes heartbeat{0%,100%{filter:brightness(0.5);}50%{filter:brightness(0.8);}}
+@keyframes heartbeat{0%,100%{filter:brightness(0.5);}50%{filter:brightness(0.7);}}
 table{border-collapse:collapse;}
 td{width:var(--cell-size);height:var(--cell-size);border:1px solid #111144;background:#1a1a3d;text-align:center;font-weight:bold;cursor:pointer;font-size:calc(var(--cell-size)*0.5);color:#fff;}
 td:hover{background:#2a2a5a;} td.open{background:#33334d;cursor:default;}
@@ -21,6 +21,7 @@ td:hover{background:#2a2a5a;} td.open{background:#33334d;cursor:default;}
 .num5{color:#ffcc66;} .num6{color:#00cccc;} .num7{color:#aaaaaa;} .num8{color:#ffffff;}
 td.flag{background:#111144;color:#0f0;} td.enemy{background:black url("asteroid.jpeg") center/cover no-repeat;animation:pop .4s ease;}
 @keyframes pop{0%{transform:scale(1);}50%{transform:scale(1.2);}100%{transform:scale(1);}}
+td.alien{background:url("alien.jpeg") center/cover no-repeat;}
 #side{background:rgba(5,5,20,.7);padding:12px;text-align:center;border-radius:8px;}
 @media(min-width:768px){#side{width:300px;}} @media(max-width:767px){#side{width:100%;}}
 #explorer{width:min(320px,90vw);transition:.4s;cursor:default;}
@@ -33,11 +34,10 @@ button{margin-top:8px;padding:8px 16px;font-size:16px;background:#1a1a3d;border:
 #zoomOverlay img{max-width:90vw;max-height:90vh;border:8px solid gold;border-radius:16px;box-shadow:0 0 40px gold;}
 #boardMessage{position:absolute;inset:0;display:flex;justify-content:center;align-items:center;text-align:center;font-size:34px;font-weight:bold;color:gold;background:rgba(0,0,0,.45);text-shadow:0 0 10px black,0 0 18px gold;pointer-events:none;}
 #goldFlash{position:absolute;inset:0;background:gold;opacity:0;animation:flash .8s ease;}
-@keyframes flash{0%{opacity:0;}30%{opacity:.6;}100%{opacity:0;}}
+@keyframes flash{0%{opacity:0;}30%{opacity:.4;}100%{opacity:0;}}
 #flashOverlay{position:absolute;inset:0;background:white;opacity:0;pointer-events:none;z-index:999;}
 .flashAnim{animation:flashPulse 1s infinite;}
-@keyframes flashPulse{0%,100%{opacity:0;}50%{opacity:0.2;}}
-#lastMsg{position:absolute;inset:0;display:flex;justify-content:center;align-items:center;text-align:center;font-size:28px;font-weight:bold;color:red;text-shadow:0 0 8px black;background:rgba(0,0,0,.6);pointer-events:none;}
+@keyframes flashPulse{0%,100%{opacity:0;}50%{opacity:0.1;}}
 </style>
 </head>
 
@@ -54,7 +54,6 @@ button{margin-top:8px;padding:8px 16px;font-size:16px;background:#1a1a3d;border:
 
 <div id="zoomOverlay"><img id="zoomImage"></div>
 <div id="flashOverlay"></div>
-<div id="lastMsg" style="display:none;">最後にどっちを選ぶ？</div>
 
 <!-- AUDIO -->
 <audio id="seOpen" src="open.mp3"></audio>
@@ -68,6 +67,7 @@ button{margin-top:8px;padding:8px 16px;font-size:16px;background:#1a1a3d;border:
 const ROWS=9,COLS=9,ENEMIES=10;
 let board=[],opened=[],flags=[],gameOver=false;
 let usedFlag=false,lastMode=false;
+let alienPos=null;
 
 const game=document.getElementById("game");
 const explorer=document.getElementById("explorer");
@@ -76,7 +76,6 @@ const bgmToggle=document.getElementById("bgmToggle");
 const zoomOverlay=document.getElementById("zoomOverlay");
 const zoomImage=document.getElementById("zoomImage");
 const flashOverlay=document.getElementById("flashOverlay");
-const lastMsg=document.getElementById("lastMsg");
 
 const bgm=document.getElementById("bgm");
 const lastBgm=document.getElementById("lastBgm");
@@ -113,6 +112,7 @@ function init(){
   opened=Array.from({length:ROWS},()=>Array(COLS).fill(false));
   flags=Array.from({length:ROWS},()=>Array(COLS).fill(false));
   gameOver=false; usedFlag=false; lastMode=false;
+  alienPos=null;
 
   stopAllBGM();
   playBGM();
@@ -123,17 +123,18 @@ function init(){
   status.textContent="探索開始！";
   status.className="";
   flashOverlay.classList.remove("flashAnim");
-  lastMsg.style.display="none";
 
   const old=document.getElementById("boardMessage");
   if(old) old.remove();
 
+  // 爆弾配置
   let placed=0;
   while(placed<ENEMIES){
     let r=Math.random()*ROWS|0, c=Math.random()*COLS|0;
     if(board[r][c]!=="E"){ board[r][c]="E"; placed++; }
   }
 
+  // 数字配置
   for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){
     if(board[r][c]==="E")continue;
     let n=0;
@@ -143,6 +144,15 @@ function init(){
     }
     board[r][c]=n;
   }
+
+  // 宇宙人配置（0マスの中からランダム1箇所）
+  const zeros=[];
+  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++)if(board[r][c]===0) zeros.push([r,c]);
+  if(zeros.length>0){
+    alienPos = zeros[Math.floor(Math.random()*zeros.length)];
+    board[alienPos[0]][alienPos[1]] = 'A';
+  }
+
   draw();
 }
 
@@ -158,6 +168,7 @@ function draw(){
       if(opened[r][c]){
         td.classList.add("open");
         if(board[r][c]==="E") td.classList.add("enemy");
+        else if(board[r][c]==='A') td.classList.add("alien");
         else if(board[r][c]>0){
           td.textContent=board[r][c];
           td.classList.add("num"+board[r][c]);
@@ -230,9 +241,9 @@ function openCell(r,c){
   }
 
   opened[r][c]=true;
-  play(seOpen);
+  if(board[r][c]!=='A') play(seOpen);
 
-  if(board[r][c]===0)
+  if(board[r][c]===0 || board[r][c]==='A')
     for(let dr=-1;dr<=1;dr++)for(let dc=-1;dc<=1;dc++){
       let nr=r+dr,nc=c+dc;
       if(nr>=0&&nr<ROWS&&nc>=0&&nc<COLS) openCell(nr,nc);
@@ -242,7 +253,6 @@ function openCell(r,c){
   checkClear();
 }
 
-// ラスト1・2マス演出判定
 function checkLast2(){
   let safe=ROWS*COLS-ENEMIES, count=0, unopenedBomb=0;
   for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){
@@ -259,7 +269,6 @@ function checkLast2(){
       lastBgm.play().catch(()=>{});
     }
     flashOverlay.classList.add("flashAnim");
-    lastMsg.style.display="flex";
   }
 }
 
@@ -272,7 +281,6 @@ function checkClear(){
     gameOver=true;
     stopAllBGM();
     flashOverlay.classList.remove("flashAnim");
-    lastMsg.style.display="none";
     status.classList.add("clear");
 
     const playClearSounds = () => {
