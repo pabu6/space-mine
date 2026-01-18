@@ -37,6 +37,7 @@ button{margin-top:8px;padding:8px 16px;font-size:16px;background:#1a1a3d;border:
 #flashOverlay{position:absolute;inset:0;background:white;opacity:0;pointer-events:none;z-index:999;}
 .flashAnim{animation:flashPulse 1s infinite;}
 @keyframes flashPulse{0%,100%{opacity:0;}50%{opacity:0.2;}}
+#lastMsg{position:absolute;inset:0;display:flex;justify-content:center;align-items:center;text-align:center;font-size:28px;font-weight:bold;color:red;text-shadow:0 0 8px black;background:rgba(0,0,0,.6);pointer-events:none;}
 </style>
 </head>
 
@@ -53,6 +54,7 @@ button{margin-top:8px;padding:8px 16px;font-size:16px;background:#1a1a3d;border:
 
 <div id="zoomOverlay"><img id="zoomImage"></div>
 <div id="flashOverlay"></div>
+<div id="lastMsg" style="display:none;">最後にどっちを選ぶ？</div>
 
 <!-- AUDIO -->
 <audio id="seOpen" src="open.mp3"></audio>
@@ -66,7 +68,6 @@ button{margin-top:8px;padding:8px 16px;font-size:16px;background:#1a1a3d;border:
 const ROWS=9,COLS=9,ENEMIES=10;
 let board=[],opened=[],flags=[],gameOver=false;
 let usedFlag=false,lastMode=false;
-let bgmEnabled=true;
 
 const game=document.getElementById("game");
 const explorer=document.getElementById("explorer");
@@ -75,6 +76,7 @@ const bgmToggle=document.getElementById("bgmToggle");
 const zoomOverlay=document.getElementById("zoomOverlay");
 const zoomImage=document.getElementById("zoomImage");
 const flashOverlay=document.getElementById("flashOverlay");
+const lastMsg=document.getElementById("lastMsg");
 
 const bgm=document.getElementById("bgm");
 const lastBgm=document.getElementById("lastBgm");
@@ -85,12 +87,12 @@ const seDeath=document.getElementById("seDeath");
 const sePerfect=document.getElementById("sePerfect");
 
 function play(se){se.currentTime=0;se.play().catch(()=>{});}
-function playBGM(){if(!bgmEnabled)return; bgm.play().catch(()=>{}); bgmToggle.textContent="BGM OFF";}
+function playBGM(){bgm.play().catch(()=>{}); bgmToggle.textContent="BGM OFF";}
 function stopAllBGM(){bgm.pause(); lastBgm.pause();}
 
 bgmToggle.onclick=()=>{
-  if(bgmEnabled){ bgmEnabled=false; stopAllBGM(); bgmToggle.textContent="BGM ON"; }
-  else{ bgmEnabled=true; playBGM(); }
+  if(!bgm.paused||!lastBgm.paused){stopAllBGM(); bgmToggle.textContent="BGM ON";}
+  else{playBGM();}
 };
 
 window.addEventListener("load",playBGM);
@@ -113,15 +115,15 @@ function init(){
   gameOver=false; usedFlag=false; lastMode=false;
 
   stopAllBGM();
-  if(bgmEnabled) playBGM();
+  playBGM();
 
   game.classList.remove("last-dark");
   explorer.src="explorer.jpeg";
   explorer.className="";
   status.textContent="探索開始！";
   status.className="";
-  zoomOverlay.style.display="none";
   flashOverlay.classList.remove("flashAnim");
+  lastMsg.style.display="none";
 
   const old=document.getElementById("boardMessage");
   if(old) old.remove();
@@ -177,7 +179,7 @@ function draw(){
           longPress=true;
           play(seFlag);
           draw();
-          checkLast();
+          checkLast2();
         },500);
       });
 
@@ -199,7 +201,7 @@ function draw(){
           usedFlag=true;
           play(seFlag);
           draw();
-          checkLast();
+          checkLast2();
         }
       };
 
@@ -220,7 +222,7 @@ function openCell(r,c){
     stopAllBGM();
     explorer.src="explorer_captured.jpeg";
     explorer.classList.add("captured");
-    status.textContent="捕まってしまった…";
+    status.textContent="ドカーン！";
     for(let i=0;i<ROWS;i++)for(let j=0;j<COLS;j++)
       if(board[i][j]==="E") opened[i][j]=true;
     draw();
@@ -236,24 +238,28 @@ function openCell(r,c){
       if(nr>=0&&nr<ROWS&&nc>=0&&nc<COLS) openCell(nr,nc);
     }
 
-  checkLast();
+  checkLast2();
   checkClear();
 }
 
-function checkLast(){
-  let safe=ROWS*COLS-ENEMIES, count=0;
-  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++)
+// ラスト1・2マス演出判定
+function checkLast2(){
+  let safe=ROWS*COLS-ENEMIES, count=0, unopenedBomb=0;
+  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){
     if(opened[r][c]&&board[r][c]!=="E") count++;
-
-  if(safe-count===1 && !lastMode){
+    if(!opened[r][c]&&board[r][c]==="E"&&!flags[r][c]) unopenedBomb++;
+  }
+  let remaining = safe - count + unopenedBomb;
+  if(remaining<=2 && !lastMode){
     lastMode=true;
     game.classList.add("last-dark");
-    if(bgmEnabled){
+    if(!gameOver){
       bgm.pause();
       lastBgm.currentTime=0;
       lastBgm.play().catch(()=>{});
     }
     flashOverlay.classList.add("flashAnim");
+    lastMsg.style.display="flex";
   }
 }
 
@@ -265,7 +271,8 @@ function checkClear(){
   if(count===safe){
     gameOver=true;
     stopAllBGM();
-    flashOverlay.classList.remove("flashAnim"); // クリア後点滅停止
+    flashOverlay.classList.remove("flashAnim");
+    lastMsg.style.display="none";
     status.classList.add("clear");
 
     const playClearSounds = () => {
