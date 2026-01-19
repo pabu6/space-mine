@@ -34,13 +34,15 @@ body{
 
 /* ======================
    スマホだけ最適化（PCは一切変更しない）
+   - 盤面が入り切らない対策：画像を上に寄せ＆少しだけ縮める
+   - スクロール無しを優先
 ====================== */
 @media(max-width:767px){
   :root{
     --topbar-h:48px;
-    --gap:8px;
-    --side-pad:8px;
-    --cell-size:min(9.8vw, 38px);
+    --gap:6px;                 /* 少し詰める */
+    --side-pad:6px;            /* 少し詰める */
+    --cell-size:min(9.2vw, 36px); /* 盤面を少し小さくして確実に収める */
   }
 
   html,body{ height:100%; overflow:hidden; }
@@ -61,20 +63,22 @@ body{
     padding:var(--side-pad);
   }
 
+  /* ★画像を「上に寄せる」＋「盤面が入るよう少しだけ抑える」 */
   #explorer{
     width:100%;
     max-width:94vw;
-    height:32vh;
-    max-height:320px;
+    height:28vh;          /* 32vh -> 28vh（盤面確保） */
+    max-height:280px;
     object-fit:contain;
     display:block;
     margin:0 auto;
+    margin-top:-6px;      /* 少し上へ */
   }
 
   #status{
-    margin-top:6px;
+    margin-top:4px;
     font-size:15px;
-    line-height:1.2;
+    line-height:1.15;
   }
 
   #game{
@@ -85,8 +89,8 @@ body{
       100vh
       - (var(--topbar-h) + env(safe-area-inset-top, 0px))
       - env(safe-area-inset-bottom, 0px)
-      - 32vh
-      - 82px
+      - 28vh
+      - 78px
     );
     overflow:hidden;
   }
@@ -141,18 +145,15 @@ body{
   50%{filter:brightness(1.35) contrast(1.35);}
 }
 
-/* 3段階目（残り1）：赤枠で揺れる */
+/* 3段階目（残り1）：赤枠＋点滅（要望：点滅も入れる） */
 #game.stage3{
   outline:4px solid rgba(255,60,60,.98);
   box-shadow:0 0 34px rgba(255,60,60,.75);
-  animation:stage3Shake .16s infinite;
+  animation:stage3Blink .22s infinite;
 }
-@keyframes stage3Shake{
-  0%{transform:translate(0,0) rotate(0deg) scale(1.01); filter:brightness(1.05) contrast(1.25);}
-  25%{transform:translate(1px,-1px) rotate(-0.4deg) scale(1.02); filter:brightness(1.2) contrast(1.45);}
-  50%{transform:translate(-1px,1px) rotate(0.4deg) scale(1.02); filter:brightness(1.35) contrast(1.6);}
-  75%{transform:translate(1px,1px) rotate(-0.3deg) scale(1.02); filter:brightness(1.2) contrast(1.45);}
-  100%{transform:translate(-1px,-1px) rotate(0.3deg) scale(1.01); filter:brightness(1.05) contrast(1.25);}
+@keyframes stage3Blink{
+  0%,100%{filter:brightness(.85) contrast(1.15); transform:scale(1.01);}
+  50%{filter:brightness(1.45) contrast(1.55); transform:scale(1.02);}
 }
 
 /* ラスト1マス煽りテロップ */
@@ -211,9 +212,7 @@ td.alien{background:url("alien.jpeg") center/cover no-repeat;}
 .num7{color:#aaaaaa;}
 .num8{color:#ffffff;}
 
-/* ======================
-   サイドUI
-====================== */
+/* サイドUI */
 #side{
   background:rgba(5,5,20,.7);
   padding:12px;
@@ -238,9 +237,7 @@ td.alien{background:url("alien.jpeg") center/cover no-repeat;}
   text-shadow:0 0 8px gold;
 }
 
-/* ======================
-   ボタン
-====================== */
+/* ボタン */
 button{
   padding:8px 14px;
   font-size:14px;
@@ -285,7 +282,7 @@ button{
 
 <!-- AUDIO -->
 <audio id="seOpen" src="open.mp3"></audio>
-<audio id="seFlag" src="flag.mp3"></audio> <!-- ★旗の効果音（これを鳴らす） -->
+<audio id="seFlag" src="flag.mp3"></audio>
 <audio id="seDeath" src="death.mp3"></audio>
 <audio id="sePerfect" src="perfect.mp3"></audio>
 <audio id="alienSound" src="alienSound.mp3"></audio>
@@ -331,14 +328,14 @@ const bgmToggle=document.getElementById("bgmToggle");
 const bgmToggleTop=document.getElementById("bgmToggleTop");
 
 const seOpen=document.getElementById("seOpen");
-const seFlag=document.getElementById("seFlag"); // ★追加：旗SE参照
+const seFlag=document.getElementById("seFlag");
 const seDeath=document.getElementById("seDeath");
 const sePerfect=document.getElementById("sePerfect");
 const alienSound=document.getElementById("alienSound");
 const clear1=document.getElementById("clear1");
 const clear2=document.getElementById("clear2");
 
-/* ===== BGM：スマホで一度タップしたら死んでもRESTARTでも継続 ===== */
+/* ===== BGM：スマホで一度タップしたら継続 ===== */
 let bgmUnlocked=false;
 let userBgmEnabled=true;
 
@@ -381,8 +378,6 @@ function switchBgmMode(toLast){
   lastMode=toLast;
   ensureBgmPlaying();
 }
-
-/* クリア後に時計音だけ残る対策 */
 function stopHypeBgmOnClear(){
   if(!lastBgm.paused) lastBgm.pause();
   lastMode=false;
@@ -595,7 +590,7 @@ function openCell(r,c){
     alienFound=true;
     updateCellView(r,c);
     play(alienSound);
-    statusEl.textContent="宇宙人だ！！！";
+    statusEl.textContent="火星人だ！！！"; /* ★要望 */
     checkStagesAndClear();
     return;
   }
@@ -604,7 +599,7 @@ function openCell(r,c){
     gameOver=true;
     explorer.src=IMG_DEATH;
     explorer.classList.add("captured");
-    statusEl.textContent="撃沈…！";
+    statusEl.textContent="任務失敗...!!"; /* ★要望 */
     play(seDeath);
 
     for(let rr=0; rr<ROWS; rr++){
@@ -630,7 +625,6 @@ function toggleFlag(r,c){
   flags[r][c]=!flags[r][c];
   usedFlag = usedFlag || flags[r][c];
 
-  /* ★ここが要望：旗を立てた/外した時に効果音 */
   play(seFlag);
 
   updateCellView(r,c);
