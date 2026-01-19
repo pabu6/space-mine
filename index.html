@@ -1,3 +1,4 @@
+```html
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -264,10 +265,7 @@ button{
 <audio id="alienSound" src="alienSound.mp3"></audio>
 <audio id="clear1" src="clear1.mp3"></audio>
 <audio id="clear2" src="clear2.mp3"></audio>
-
-<!-- PERFECT専用音声（保存名：perfectClear.mp3） -->
 <audio id="perfectClear" src="perfectClear.mp3"></audio>
-
 <audio id="bgm" src="bgm.mp3" loop></audio>
 <audio id="lastBgm" src="last.mp3" loop></audio>
 
@@ -371,11 +369,17 @@ function switchBgmMode(toLast){
   ensureBgmPlaying();
 }
 
-/* ===== util ===== */
+/* ★追加修正：爆弾を踏んだら煽りBGM(lastBgm=時計音)は止める */
+function stopHypeBgmOnDeath(){
+  if(!lastBgm.paused) lastBgm.pause();
+  lastMode=false;          // 状態も通常に戻す
+}
+
 document.addEventListener("contextmenu", (e)=>e.preventDefault());
 document.getElementById("restart").onclick=init;
 document.getElementById("restartTop").onclick=init;
 
+/* ===== util ===== */
 function inBounds(r,c){ return r>=0 && r<ROWS && c>=0 && c<COLS; }
 function neighbors(r,c){
   const res=[];
@@ -579,6 +583,10 @@ function openCell(r,c){
 
   if(board[r][c]===-1){
     gameOver=true;
+
+    /* ★ここで時計音(lastBgm)を止める（要望） */
+    stopHypeBgmOnDeath();
+
     explorer.src=IMG_DEATH;
     explorer.classList.add("captured");
     explorer.classList.remove("perfect");
@@ -592,6 +600,8 @@ function openCell(r,c){
     }
     openExtraRing(r,c,EXTRA_RING_OPEN);
     refreshAll();
+
+    // 通常BGMを再開（ユーザーがONなら）
     ensureBgmPlaying();
     return;
   }
@@ -639,7 +649,11 @@ function checkStagesAndClear(){
     stageShown=2;
     setStage(2);
     explorer.src=IMG_HYPE2;
-    statusEl.textContent="もう少しだ…！";
+    statusEl.textContent="早くしないと惑星が爆発するっ...!!!";
+  }
+
+  if(rem===2 && stageShown===2){
+    statusEl.textContent="あと少し....";
   }
 
   if(rem<=1 && stageShown<3){
@@ -653,7 +667,6 @@ function checkStagesAndClear(){
   if(rem===0 && !gameOver){
     gameOver=true;
 
-    // クリアでBGM停止
     stopAllBgm();
 
     setStage(0);
@@ -665,15 +678,10 @@ function checkStagesAndClear(){
     if(isPerfect){
       statusEl.textContent="PERFECT！！";
       explorer.src=IMG_PERFECT;
-
-      // 金枠
       explorer.classList.add("perfect");
 
-      // ★要望：PERFECT時は clear2 を流さない
-      // clear1 → perfectClear
       play(clear1);
       setTimeout(()=>play(perfectClear), 650);
-
     }else{
       statusEl.textContent="CLEAR！！";
       explorer.src=IMG_CLEAR;
@@ -713,3 +721,4 @@ init();
 </script>
 </body>
 </html>
+```
