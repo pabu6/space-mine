@@ -6,10 +6,16 @@
 <title>宇宙探査マインスイーパー</title>
 <style>
 :root{--cell-size:36px;}
-body{margin:0;font-family:sans-serif;background:url("space.jpg") center/cover no-repeat fixed;color:#fff;}
+body{margin:0;font-family:sans-serif;background:url("space.jpg") center/cover no-repeat fixed;color:#fff;-webkit-touch-callout:none;-webkit-user-select:none;-khtml-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;}
 #container{display:flex;min-height:100vh;}
 @media(min-width:768px){#container{justify-content:center;align-items:center;gap:32px;} :root{--cell-size:48px;}}
-@media(max-width:767px){#container{flex-direction:column;align-items:center;} :root{--cell-size:min(9vw,40px);}}
+@media(max-width:767px){
+  #container{flex-direction:column;align-items:center;}
+  :root{--cell-size:min(9vw,40px);}
+  #side{order:-1;width:100%;display:flex;justify-content:space-around;margin-bottom:8px;}
+  #explorer{width:40vw;}
+  #game{width:90vw; max-width:90vw;}
+}
 #game{padding:10px;background:rgba(0,0,20,.6);border-radius:6px;position:relative;transition:filter .5s;}
 #game.last-dark{filter:brightness(0.5) contrast(1.2);animation:heartbeat 1s infinite;}
 @keyframes heartbeat{0%,100%{filter:brightness(0.5);}50%{filter:brightness(0.7);}}
@@ -22,7 +28,7 @@ td.flag{background:#111144;color:#0f0;} td.enemy{background:black url("asteroid.
 td.alien{background:url("alien.jpeg") center/cover no-repeat;}
 @keyframes pop{0%{transform:scale(1);}50%{transform:scale(1.2);}100%{transform:scale(1);}}
 #side{background:rgba(5,5,20,.7);padding:12px;text-align:center;border-radius:8px;}
-@media(min-width:768px){#side{width:300px;}} @media(max-width:767px){#side{width:100%;}}
+@media(min-width:768px){#side{width:300px;}}
 #explorer{width:min(320px,90vw);transition:.4s;cursor:default;}
 #explorer.perfect{border:6px solid gold;border-radius:14px;box-shadow:0 0 30px gold;cursor:pointer;}
 #explorer.captured{filter:grayscale(40%) brightness(.8);}
@@ -88,20 +94,12 @@ function play(se){se.currentTime=0;se.play().catch(()=>{});}
 function playBGM(){bgm.play().catch(()=>{}); bgmToggle.textContent="BGM OFF";}
 function stopAllBGM(){bgm.pause(); lastBgm.pause();}
 
-bgmToggle.onclick=()=>{
-  if(!bgm.paused||!lastBgm.paused){stopAllBGM(); bgmToggle.textContent="BGM ON";}
-  else{playBGM();}
-};
-
+bgmToggle.onclick=()=>{if(!bgm.paused||!lastBgm.paused){stopAllBGM(); bgmToggle.textContent="BGM ON";}else{playBGM();}};
 window.addEventListener("load",playBGM);
 document.body.addEventListener("click",playBGM,{once:true});
 document.body.addEventListener("touchstart",playBGM,{once:true});
 
-explorer.onclick=()=>{
-  if(!explorer.classList.contains("perfect"))return;
-  zoomImage.src=explorer.src;
-  zoomOverlay.style.display="flex";
-};
+explorer.onclick=()=>{if(!explorer.classList.contains("perfect"))return; zoomImage.src=explorer.src; zoomOverlay.style.display="flex";};
 zoomOverlay.onclick=()=>zoomOverlay.style.display="none";
 
 document.getElementById("restart").onclick=init;
@@ -112,18 +110,14 @@ function init(){
   flags=Array.from({length:ROWS},()=>Array(COLS).fill(false));
   gameOver=false; usedFlag=false; lastMode=false; alienPlaced=false;
 
-  stopAllBGM();
-  playBGM();
+  stopAllBGM(); playBGM();
 
   game.classList.remove("last-dark");
-  explorer.src="explorer.jpeg";
-  explorer.className="";
-  status.textContent="探索開始！";
-  status.className="";
+  explorer.src="explorer.jpeg"; explorer.className="";
+  status.textContent="探索開始！"; status.className="";
   flashOverlay.classList.remove("flashAnim");
 
-  let old=document.getElementById("boardMessage");
-  if(old) old.remove();
+  let old=document.getElementById("boardMessage"); if(old) old.remove();
 
   // 爆弾配置
   let placed=0;
@@ -143,71 +137,29 @@ function init(){
     board[r][c]=n;
   }
 
-  // 宇宙人1体配置（クリックするまで開かない）
-  const emptyCells=[];
-  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){
-    if(board[r][c]===0) emptyCells.push([r,c]);
-  }
-  if(emptyCells.length>0){
-    const [ar,ac]=emptyCells[Math.floor(Math.random()*emptyCells.length)];
-    board[ar][ac]='A';
-    alienPlaced=true;
-  }
+  // 宇宙人1体配置
+  const emptyCells=[]; for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){ if(board[r][c]===0) emptyCells.push([r,c]); }
+  if(emptyCells.length>0){ const [ar,ac]=emptyCells[Math.floor(Math.random()*emptyCells.length)]; board[ar][ac]='A'; alienPlaced=true; }
 
   draw();
 }
 
 function draw(){
-  game.innerHTML="";
-  const table=document.createElement("table");
-
-  for(let r=0;r<ROWS;r++){
-    const tr=document.createElement("tr");
-    for(let c=0;c<COLS;c++){
-      const td=document.createElement("td");
-
-      if(opened[r][c]){
-        td.classList.add("open");
-        if(board[r][c]==="E") td.classList.add("enemy");
-        else if(board[r][c]==="A") td.classList.add("alien");
-        else if(board[r][c]>0) { td.textContent=board[r][c]; td.classList.add("num"+board[r][c]); }
-      } else if(flags[r][c]){ td.classList.add("flag"); td.textContent="🚩"; }
+  game.innerHTML=""; const table=document.createElement("table");
+  for(let r=0;r<ROWS;r++){ const tr=document.createElement("tr");
+    for(let c=0;c<COLS;c++){ const td=document.createElement("td");
+      if(opened[r][c]){ td.classList.add("open"); if(board[r][c]==="E") td.classList.add("enemy");
+      else if(board[r][c]==="A") td.classList.add("alien");
+      else if(board[r][c]>0){ td.textContent=board[r][c]; td.classList.add("num"+board[r][c]); } }
+      else if(flags[r][c]){ td.classList.add("flag"); td.textContent="🚩"; }
 
       let pressTimer=null, longPress=false;
-
-      td.addEventListener("touchstart", e=>{
-        if(gameOver||opened[r][c]) return;
-        longPress=false;
-        pressTimer=setTimeout(()=>{
-          flags[r][c]=!flags[r][c];
-          usedFlag=true;
-          longPress=true;
-          play(seFlag);
-          draw();
-          checkLast2();
-        },500);
-      });
+      td.addEventListener("touchstart", e=>{ if(gameOver||opened[r][c]) return; longPress=false;
+        pressTimer=setTimeout(()=>{ flags[r][c]=!flags[r][c]; usedFlag=true; longPress=true; play(seFlag); draw(); checkLast2(); },500); });
       td.addEventListener("touchend", ()=>clearTimeout(pressTimer));
       td.addEventListener("touchmove", ()=>clearTimeout(pressTimer));
-
-      td.onclick=()=>{
-        if(longPress) return;
-        if(!gameOver && !flags[r][c]){
-          openCell(r,c);
-          draw();
-        }
-      };
-      td.oncontextmenu=e=>{
-        e.preventDefault();
-        if(!opened[r][c]&&!gameOver){
-          flags[r][c]=!flags[r][c];
-          usedFlag=true;
-          play(seFlag);
-          draw();
-          checkLast2();
-        }
-      };
-
+      td.onclick=()=>{ if(longPress) return; if(!gameOver && !flags[r][c]){ openCell(r,c); draw(); } };
+      td.oncontextmenu=e=>{ e.preventDefault(); if(!opened[r][c]&&!gameOver){ flags[r][c]=!flags[r][c]; usedFlag=true; play(seFlag); draw(); checkLast2(); } };
       tr.appendChild(td);
     }
     table.appendChild(tr);
@@ -215,56 +167,29 @@ function draw(){
   game.appendChild(table);
 }
 
-// セル開く（宇宙人はクリックのみ）
 function openCell(r,c){
   if(opened[r][c]) return;
-
-  if(board[r][c]==='A'){
-    opened[r][c]=true;
-    alienSound.currentTime=0; alienSound.play().catch(()=>{});
-    draw();
-    checkClear();
-    return;
-  }
-
+  if(board[r][c]==='A'){ opened[r][c]=true; alienSound.currentTime=0; alienSound.play().catch(()=>{}); draw(); checkClear(); return; }
   opened[r][c]=true;
-
   if(board[r][c]!=="E") play(seOpen);
-
-  if(board[r][c]==="E"){
-    gameOver=true;
-    play(seDeath);
-    stopAllBGM();
-    explorer.src="explorer_captured.jpeg";
-    explorer.classList.add("captured");
-    status.textContent="ドカーン！";
-    for(let i=0;i<ROWS;i++)for(let j=0;j<COLS;j++) if(board[i][j]==="E") opened[i][j]=true;
-    draw(); return;
-  }
-
-  // 0マス展開（宇宙人は開かない）
+  if(board[r][c]==="E"){ gameOver=true; play(seDeath); stopAllBGM(); explorer.src="explorer_captured.jpeg"; explorer.classList.add("captured"); status.textContent="ドカーン！"; for(let i=0;i<ROWS;i++)for(let j=0;j<COLS;j++) if(board[i][j]==="E") opened[i][j]=true; draw(); return; }
   if(board[r][c]===0){
     const queue=[[r,c]];
     while(queue.length>0){
       const [x,y]=queue.shift();
-      for(let dx=-1;dx<=1;dx++) for(let dy=-1;dy<=1;dy++){
+      for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){
         const nx=x+dx, ny=y+dy;
         if(nx<0||nx>=ROWS||ny<0||ny>=COLS) continue;
         if(opened[nx][ny]||board[nx][ny]==='A') continue;
-        if(board[nx][ny]>=0){
-          opened[nx][ny]=true;
-          if(board[nx][ny]>0) play(seOpen);
-          if(board[nx][ny]===0) queue.push([nx,ny]);
-        }
+        opened[nx][ny]=true;
+        if(board[nx][ny]>0) play(seOpen);
+        if(board[nx][ny]===0) queue.push([nx,ny]);
       }
     }
   }
-
-  checkLast2();
-  checkClear();
+  checkLast2(); checkClear();
 }
 
-// ラスト2マス演出
 function checkLast2(){
   let safe=ROWS*COLS-ENEMIES, count=0, unopenedBomb=0;
   for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){
@@ -273,56 +198,22 @@ function checkLast2(){
   }
   let remaining = safe - count + unopenedBomb;
   if(remaining<=2 && !lastMode){
-    lastMode=true;
-    game.classList.add("last-dark");
-    if(!gameOver){
-      bgm.pause();
-      lastBgm.currentTime=0;
-      lastBgm.play().catch(()=>{});
-    }
+    lastMode=true; game.classList.add("last-dark");
+    if(!gameOver){ bgm.pause(); lastBgm.currentTime=0; lastBgm.play().catch(()=>{}); }
     flashOverlay.classList.add("flashAnim");
   }
 }
 
-// クリア判定
 function checkClear(){
   let safe=ROWS*COLS-ENEMIES, count=0;
   for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++) if(opened[r][c] && board[r][c]!=="E") count++;
-
   if(count===safe){
-    gameOver=true;
-    stopAllBGM();
-    flashOverlay.classList.remove("flashAnim");
-    status.classList.add("clear");
-
-    const playClearSounds=()=>{
-      const seClear1=new Audio('clear1.mp3');
-      const seClear2=new Audio('clear2.mp3');
-      seClear1.play();
-      seClear1.onended=()=>seClear2.play();
-    };
-
-    if(!usedFlag){
-      play(sePerfect);
-      status.textContent="PERFECT CLEAR!!";
-      explorer.src="explorer_perfect.jpeg";
-      explorer.classList.add("perfect");
-
-      const msg=document.createElement("div");
-      msg.id="boardMessage";
-      msg.innerHTML="PERFECT CLEAR!<br>CONGRATULATIONS!!";
-      game.appendChild(msg);
-
-      const flash=document.createElement("div");
-      flash.id="goldFlash";
-      game.appendChild(flash);
-
-      playClearSounds();
-    }else{
-      status.textContent="CONGRATULATIONS!!";
-      explorer.src="explorer_clear.jpeg";
-      playClearSounds();
-    }
+    gameOver=true; stopAllBGM(); flashOverlay.classList.remove("flashAnim"); status.classList.add("clear");
+    const playClearSounds=()=>{ const seClear1=new Audio('clear1.mp3'); const seClear2=new Audio('clear2.mp3'); seClear1.play(); seClear1.onended=()=>seClear2.play(); };
+    if(!usedFlag){ play(sePerfect); status.textContent="PERFECT CLEAR!!"; explorer.src="explorer_perfect.jpeg"; explorer.classList.add("perfect");
+      const msg=document.createElement("div"); msg.id="boardMessage"; msg.innerHTML="PERFECT CLEAR!<br>CONGRATULATIONS!!"; game.appendChild(msg);
+      const flash=document.createElement("div"); flash.id="goldFlash"; game.appendChild(flash); playClearSounds();
+    }else{ status.textContent="CONGRATULATIONS!!"; explorer.src="explorer_clear.jpeg"; playClearSounds(); }
   }
 }
 
