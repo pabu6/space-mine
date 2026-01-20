@@ -1,3 +1,4 @@
+```html
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -304,15 +305,15 @@ const ALIEN_MESSAGES = {
 };
 
 /* ★確率でエイリアンタイプを選ぶ
-   1:50%, 2:24%, 3:20%, 4:5%, 5:1%（合計100%）
+   1:40%, 2:25%, 3:25%, 4:7%, 5:3%（合計100%）
 */
 function pickAlienTypeWeighted(){
   const x = Math.random() * 100; // 0..100
-  if(x < 50) return 1;           // 50
-  if(x < 74) return 2;           // +24 = 74
-  if(x < 94) return 3;           // +20 = 94
-  if(x < 99) return 4;           // +5  = 99
-  return 5;                      // +1  = 100
+  if(x < 40) return 1;           // 40
+  if(x < 65) return 2;           // +25 = 65
+  if(x < 90) return 3;           // +25 = 90
+  if(x < 97) return 4;           // +7  = 97
+  return 5;                      // +3  = 100
 }
 
 let board=[], opened=[], flags=[];
@@ -764,3 +765,4 @@ init();
 </script>
 </body>
 </html>
+```
