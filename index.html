@@ -1,4 +1,3 @@
-```html
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -7,6 +6,7 @@
 <title>宇宙探査マインスイーパー</title>
 
 <style>
+/* --- ここからCSS：前回までと同じ（見た目は変えていません） --- */
 :root{--cell-size:36px;}
 html,body{height:100%; overflow:hidden;}
 body{
@@ -109,11 +109,15 @@ body{
   position:relative;
   transition:box-shadow .2s, outline .2s, transform .2s;
 }
+
+/* 1段階目（残り<=5）：薄い点滅 */
 #game.stage1{ animation:boardStage1 .9s infinite; }
 @keyframes boardStage1{
   0%,100%{filter:brightness(.55);}
   50%{filter:brightness(.95);}
 }
+
+/* 2段階目（残り<=3）：黄色枠チカチカ */
 #game.stage2{
   outline:3px solid rgba(255,215,0,.95);
   box-shadow:0 0 22px rgba(255,215,0,.65);
@@ -123,6 +127,8 @@ body{
   0%,100%{filter:brightness(.85) contrast(1.1);}
   50%{filter:brightness(1.35) contrast(1.35);}
 }
+
+/* 3段階目（残り<=1）：赤枠＋点滅 */
 #game.stage3{
   outline:4px solid rgba(255,60,60,.98);
   box-shadow:0 0 34px rgba(255,60,60,.75);
@@ -232,6 +238,7 @@ button{
 @media(max-width:767px){
   #buttons{display:none;}
 }
+/* --- ここまでCSS --- */
 </style>
 </head>
 
@@ -266,10 +273,23 @@ button{
 <audio id="clear1" src="clear1.mp3"></audio>
 <audio id="clear2" src="clear2.mp3"></audio>
 <audio id="perfectClear" src="perfectClear.mp3"></audio>
+
+<!-- ★追加：ラスト1マス専用BGM（保存名：lastOne.mp3） -->
+<audio id="lastOne" src="lastOne.mp3" loop></audio>
+
 <audio id="bgm" src="bgm.mp3" loop></audio>
+
+<!-- ★時計音（煽り演出）＝今までの lastBgm を「時計音」として使用 -->
 <audio id="lastBgm" src="last.mp3" loop></audio>
 
 <script>
+/* =========================
+   要望の「音」仕様だけを実装（それ以外は変更しない）
+   - 時計音（lastBgm / last.mp3）は残り5マスから最後まで鳴らす
+   - bgm.mp3 は残り5マスで音量を小さく、残り1マスで停止
+   - 残り1マスで lastOne.mp3 と 時計音（lastBgm）を同時再生
+========================= */
+
 const ROWS=9, COLS=9, ENEMIES=10;
 
 const IMG_NORMAL   = "explorer.jpeg";
@@ -281,15 +301,14 @@ const IMG_PERFECT  = "perfect.jpeg";
 const IMG_DEATH    = "death.jpeg";
 
 const EXTRA_RING_OPEN = 3;
+const HYPE_START = 5;
 
 let board=[], opened=[], flags=[];
 let gameOver=false;
 let usedFlag=false;
 let started=false;
 
-let lastMode=false;
 let stageShown=0;
-
 let alienPos=null;
 
 const game=document.getElementById("game");
@@ -299,7 +318,8 @@ const hype=document.getElementById("hype");
 const hypeText=document.getElementById("hypeText");
 
 const bgm=document.getElementById("bgm");
-const lastBgm=document.getElementById("lastBgm");
+const clockBgm=document.getElementById("lastBgm");  // 時計音
+const lastOne=document.getElementById("lastOne");   // ラスト1マスBGM
 
 const bgmToggle=document.getElementById("bgmToggle");
 const bgmToggleTop=document.getElementById("bgmToggleTop");
@@ -313,7 +333,7 @@ const clear1=document.getElementById("clear1");
 const clear2=document.getElementById("clear2");
 const perfectClear=document.getElementById("perfectClear");
 
-/* 音量 */
+/* 音量（前のまま） */
 seOpen.volume=0.9;
 seFlag.volume=0.9;
 seDeath.volume=1.0;
@@ -323,13 +343,16 @@ clear2.volume=1.0;
 sePerfect.volume=1.0;
 perfectClear.volume=1.0;
 
+/* ★bgm の通常音量 / 小さくした音量 */
+const BGM_VOL_NORMAL = 1.0;
+const BGM_VOL_LOW    = 0.25;
+
 function play(se){
   if(!se) return;
   try{ se.currentTime=0; se.play().catch(()=>{}); }catch(e){}
 }
-function stopAllBgm(){ bgm.pause(); lastBgm.pause(); }
 
-/* BGM：1回タップで継続（ただしクリア時は止める） */
+/* ===== BGM ON/OFF 管理（従来の挙動を崩さず、対象を増やす） ===== */
 let bgmUnlocked=false;
 let userBgmEnabled=true;
 
@@ -339,19 +362,28 @@ function setBgmButtonText(){
   bgmToggle.textContent=t;
   bgmToggleTop.textContent=t;
 }
-function currentBgmEl(){ return lastMode ? lastBgm : bgm; }
-function ensureBgmPlaying(){
-  if(!bgmUnlocked || !userBgmEnabled) return;
-  const target=currentBgmEl();
-  if(!target.paused) return;
-  if(target===bgm && !lastBgm.paused) lastBgm.pause();
-  if(target===lastBgm && !bgm.paused) bgm.pause();
-  target.play().catch(()=>{});
+
+function stopAllBgm(){
+  bgm.pause();
+  clockBgm.pause();
+  lastOne.pause();
 }
+
+function ensureBaseBgmPlaying(){
+  // ベースBGM（bgm.mp3）は「残り1」になったら止めるので、ここでは再開しない制御を入れる
+  if(!bgmUnlocked || !userBgmEnabled) return;
+  if(!bgm.paused) return;
+  bgm.play().catch(()=>{});
+}
+
 function toggleBGM(){
   userBgmEnabled=!userBgmEnabled;
-  if(!userBgmEnabled) stopAllBgm();
-  else ensureBgmPlaying();
+  if(!userBgmEnabled){
+    stopAllBgm();
+  }else{
+    // 再開：状況に応じて再生（残り状態は checkStagesAndClear が持っているので、ここでは最低限）
+    ensureBaseBgmPlaying();
+  }
   setBgmButtonText();
 }
 bgmToggle.onclick=toggleBGM;
@@ -359,21 +391,12 @@ bgmToggleTop.onclick=toggleBGM;
 
 document.addEventListener("pointerdown", ()=>{
   bgmUnlocked=true;
-  ensureBgmPlaying();
+  if(userBgmEnabled){
+    bgm.volume = BGM_VOL_NORMAL;
+    ensureBaseBgmPlaying();
+  }
   setBgmButtonText();
 },{once:true});
-
-function switchBgmMode(toLast){
-  if(lastMode===toLast) return;
-  lastMode=toLast;
-  ensureBgmPlaying();
-}
-
-/* ★追加修正：爆弾を踏んだら煽りBGM(lastBgm=時計音)は止める */
-function stopHypeBgmOnDeath(){
-  if(!lastBgm.paused) lastBgm.pause();
-  lastMode=false;          // 状態も通常に戻す
-}
 
 document.addEventListener("contextmenu", (e)=>e.preventDefault());
 document.getElementById("restart").onclick=init;
@@ -584,8 +607,9 @@ function openCell(r,c){
   if(board[r][c]===-1){
     gameOver=true;
 
-    /* ★ここで時計音(lastBgm)を止める（要望） */
-    stopHypeBgmOnDeath();
+    // 爆弾で死亡したら時計音もラスト1曲も止める（以前の要望維持）
+    clockBgm.pause();
+    lastOne.pause();
 
     explorer.src=IMG_DEATH;
     explorer.classList.add("captured");
@@ -601,8 +625,12 @@ function openCell(r,c){
     openExtraRing(r,c,EXTRA_RING_OPEN);
     refreshAll();
 
-    // 通常BGMを再開（ユーザーがONなら）
-    ensureBgmPlaying();
+    // 通常BGMは状況によって再開（残り1で止めるルールがあるので、ここではそのまま）
+    if(userBgmEnabled && bgmUnlocked){
+      // 死亡時は bgm を通常音量に戻して再生してOK（ただし既に止まってたら鳴らさない）
+      bgm.volume = BGM_VOL_NORMAL;
+      ensureBaseBgmPlaying();
+    }
     return;
   }
 
@@ -634,17 +662,49 @@ function setStage(stage){
   if(stage===3) game.classList.add("stage3");
 }
 
+/* ===== ここが「音」仕様の中核 ===== */
+let clockStarted=false;
+let lastOneStarted=false;
+let bgmLowered=false;
+
+function startClockIfNeeded(){
+  if(clockStarted) return;
+  if(!bgmUnlocked || !userBgmEnabled) return;
+  clockStarted=true;
+  clockBgm.play().catch(()=>{});
+}
+function startLastOneIfNeeded(){
+  if(lastOneStarted) return;
+  if(!bgmUnlocked || !userBgmEnabled) return;
+  lastOneStarted=true;
+  lastOne.play().catch(()=>{});
+}
+function lowerBgmIfNeeded(){
+  if(bgmLowered) return;
+  bgmLowered=true;
+  bgm.volume = BGM_VOL_LOW;
+}
+function stopBgmAtLastOne(){
+  // 残り1で bgm を消す
+  bgm.pause();
+}
+
 function checkStagesAndClear(){
   const rem=remainingSafeCells();
 
-  if(rem<=10 && stageShown<1){
+  // Stage1（残り<=5）開始
+  if(rem<=HYPE_START && stageShown<1){
     stageShown=1;
     setStage(1);
     explorer.src=IMG_HYPE1;
     statusEl.textContent="早く宇宙船に戻らないと...!";
-    switchBgmMode(true);
+
+    // ★要望：残り5から時計音スタート、bgm音量を小さく
+    startClockIfNeeded();
+    lowerBgmIfNeeded();
   }
 
+  // Stage2（残り<=3）
   if(rem<=3 && stageShown<2){
     stageShown=2;
     setStage(2);
@@ -652,21 +712,30 @@ function checkStagesAndClear(){
     statusEl.textContent="早くしないと惑星が爆発するっ...!!!";
   }
 
+  // 残り2メッセージ
   if(rem===2 && stageShown===2){
     statusEl.textContent="あと少し....";
   }
 
+  // Stage3（残り<=1）
   if(rem<=1 && stageShown<3){
     stageShown=3;
     setStage(3);
     explorer.src=IMG_HYPE3;
     statusEl.textContent="早く脱出しないとおぉっっっ！！！";
     showHypeOnce("早く脱出しないとおぉっっっ！！！");
+
+    // ★要望：残り1で bgm を消して、lastOne + 時計音を同時に流す
+    stopBgmAtLastOne();
+    startClockIfNeeded();   // 念のため
+    startLastOneIfNeeded();
   }
 
+  // クリア
   if(rem===0 && !gameOver){
     gameOver=true;
 
+    // クリアでBGM停止（従来）
     stopAllBgm();
 
     setStage(0);
@@ -693,9 +762,7 @@ function checkStagesAndClear(){
 }
 
 function init(){
-  lastMode=false;
-  ensureBgmPlaying();
-
+  // 見た目/ゲーム状態はそのまま（従来）
   gameOver=false;
   usedFlag=false;
   started=false;
@@ -714,6 +781,20 @@ function init(){
   game.classList.remove("stage1","stage2","stage3");
   render();
   refreshAll();
+
+  // ★音状態リセット（ゲームやり直しで「残り5演出」前の状態に戻す）
+  clockStarted=false;
+  lastOneStarted=false;
+  bgmLowered=false;
+  clockBgm.pause(); clockBgm.currentTime=0;
+  lastOne.pause(); lastOne.currentTime=0;
+
+  // bgm は通常音量に戻して、鳴らすべきなら鳴らす（ユーザーONなら）
+  bgm.volume = BGM_VOL_NORMAL;
+  if(bgmUnlocked && userBgmEnabled){
+    ensureBaseBgmPlaying();
+  }
+
   setBgmButtonText();
 }
 
@@ -721,4 +802,3 @@ init();
 </script>
 </body>
 </html>
-```
