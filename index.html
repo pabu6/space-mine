@@ -6,7 +6,6 @@
 <title>宇宙探査マインスイーパー</title>
 
 <style>
-/* --- ここからCSS：前回までと同じ（見た目は変えていません） --- */
 :root{--cell-size:36px;}
 html,body{height:100%; overflow:hidden;}
 body{
@@ -184,7 +183,14 @@ td{
 td.open{background:#33334d;cursor:default;}
 td.flag{background:#111144;color:#0f0;}
 td.enemy{background:black url("asteroid.jpeg") center/cover no-repeat;}
-td.alien{background:url("alien.jpeg") center/cover no-repeat;}
+
+/* エイリアン1〜5 */
+td.alien{ background-position:center; background-size:cover; background-repeat:no-repeat; }
+td.alien.alien1{ background-image:url("alien1.jpeg"); }
+td.alien.alien2{ background-image:url("alien2.jpeg"); }
+td.alien.alien3{ background-image:url("alien3.jpeg"); }
+td.alien.alien4{ background-image:url("alien4.jpeg"); }
+td.alien.alien5{ background-image:url("alien5.jpeg"); }
 
 .num1{color:#66ccff;}
 .num2{color:#33ff77;}
@@ -238,7 +244,6 @@ button{
 @media(max-width:767px){
   #buttons{display:none;}
 }
-/* --- ここまでCSS --- */
 </style>
 </head>
 
@@ -273,23 +278,10 @@ button{
 <audio id="clear1" src="clear1.mp3"></audio>
 <audio id="clear2" src="clear2.mp3"></audio>
 <audio id="perfectClear" src="perfectClear.mp3"></audio>
-
-<!-- ★追加：ラスト1マス専用BGM（保存名：lastOne.mp3） -->
-<audio id="lastOne" src="lastOne.mp3" loop></audio>
-
 <audio id="bgm" src="bgm.mp3" loop></audio>
-
-<!-- ★時計音（煽り演出）＝今までの lastBgm を「時計音」として使用 -->
 <audio id="lastBgm" src="last.mp3" loop></audio>
 
 <script>
-/* =========================
-   要望の「音」仕様だけを実装（それ以外は変更しない）
-   - 時計音（lastBgm / last.mp3）は残り5マスから最後まで鳴らす
-   - bgm.mp3 は残り5マスで音量を小さく、残り1マスで停止
-   - 残り1マスで lastOne.mp3 と 時計音（lastBgm）を同時再生
-========================= */
-
 const ROWS=9, COLS=9, ENEMIES=10;
 
 const IMG_NORMAL   = "explorer.jpeg";
@@ -301,15 +293,38 @@ const IMG_PERFECT  = "perfect.jpeg";
 const IMG_DEATH    = "death.jpeg";
 
 const EXTRA_RING_OPEN = 3;
-const HYPE_START = 5;
+
+/* エイリアン種類ごとのメッセージ（4は金ピカ） */
+const ALIEN_MESSAGES = {
+  1: "火星人だ！！！",
+  2: "宇宙人だ！！！",
+  3: "宇宙人だ！！！",
+  4: "金ピカの宇宙人だ！！！",
+  5: "あ、あの宇宙人は～！！！！！！"
+};
+
+/* ★確率でエイリアンタイプを選ぶ
+   1:50%, 2:24%, 3:20%, 4:5%, 5:1%（合計100%）
+*/
+function pickAlienTypeWeighted(){
+  const x = Math.random() * 100; // 0..100
+  if(x < 50) return 1;           // 50
+  if(x < 74) return 2;           // +24 = 74
+  if(x < 94) return 3;           // +20 = 94
+  if(x < 99) return 4;           // +5  = 99
+  return 5;                      // +1  = 100
+}
 
 let board=[], opened=[], flags=[];
 let gameOver=false;
 let usedFlag=false;
 let started=false;
 
+let lastMode=false;
 let stageShown=0;
-let alienPos=null;
+
+let alienPos=null;       // [r,c]
+let alienType=1;         // 1..5
 
 const game=document.getElementById("game");
 const explorer=document.getElementById("explorer");
@@ -318,8 +333,7 @@ const hype=document.getElementById("hype");
 const hypeText=document.getElementById("hypeText");
 
 const bgm=document.getElementById("bgm");
-const clockBgm=document.getElementById("lastBgm");  // 時計音
-const lastOne=document.getElementById("lastOne");   // ラスト1マスBGM
+const lastBgm=document.getElementById("lastBgm");
 
 const bgmToggle=document.getElementById("bgmToggle");
 const bgmToggleTop=document.getElementById("bgmToggleTop");
@@ -333,7 +347,7 @@ const clear1=document.getElementById("clear1");
 const clear2=document.getElementById("clear2");
 const perfectClear=document.getElementById("perfectClear");
 
-/* 音量（前のまま） */
+/* 音量 */
 seOpen.volume=0.9;
 seFlag.volume=0.9;
 seDeath.volume=1.0;
@@ -343,16 +357,13 @@ clear2.volume=1.0;
 sePerfect.volume=1.0;
 perfectClear.volume=1.0;
 
-/* ★bgm の通常音量 / 小さくした音量 */
-const BGM_VOL_NORMAL = 1.0;
-const BGM_VOL_LOW    = 0.25;
-
 function play(se){
   if(!se) return;
   try{ se.currentTime=0; se.play().catch(()=>{}); }catch(e){}
 }
+function stopAllBgm(){ bgm.pause(); lastBgm.pause(); }
 
-/* ===== BGM ON/OFF 管理（従来の挙動を崩さず、対象を増やす） ===== */
+/* BGM：1回タップで継続（ただしクリア時は止める） */
 let bgmUnlocked=false;
 let userBgmEnabled=true;
 
@@ -362,28 +373,19 @@ function setBgmButtonText(){
   bgmToggle.textContent=t;
   bgmToggleTop.textContent=t;
 }
-
-function stopAllBgm(){
-  bgm.pause();
-  clockBgm.pause();
-  lastOne.pause();
-}
-
-function ensureBaseBgmPlaying(){
-  // ベースBGM（bgm.mp3）は「残り1」になったら止めるので、ここでは再開しない制御を入れる
+function currentBgmEl(){ return lastMode ? lastBgm : bgm; }
+function ensureBgmPlaying(){
   if(!bgmUnlocked || !userBgmEnabled) return;
-  if(!bgm.paused) return;
-  bgm.play().catch(()=>{});
+  const target=currentBgmEl();
+  if(!target.paused) return;
+  if(target===bgm && !lastBgm.paused) lastBgm.pause();
+  if(target===lastBgm && !bgm.paused) bgm.pause();
+  target.play().catch(()=>{});
 }
-
 function toggleBGM(){
   userBgmEnabled=!userBgmEnabled;
-  if(!userBgmEnabled){
-    stopAllBgm();
-  }else{
-    // 再開：状況に応じて再生（残り状態は checkStagesAndClear が持っているので、ここでは最低限）
-    ensureBaseBgmPlaying();
-  }
+  if(!userBgmEnabled) stopAllBgm();
+  else ensureBgmPlaying();
   setBgmButtonText();
 }
 bgmToggle.onclick=toggleBGM;
@@ -391,12 +393,21 @@ bgmToggleTop.onclick=toggleBGM;
 
 document.addEventListener("pointerdown", ()=>{
   bgmUnlocked=true;
-  if(userBgmEnabled){
-    bgm.volume = BGM_VOL_NORMAL;
-    ensureBaseBgmPlaying();
-  }
+  ensureBgmPlaying();
   setBgmButtonText();
 },{once:true});
+
+function switchBgmMode(toLast){
+  if(lastMode===toLast) return;
+  lastMode=toLast;
+  ensureBgmPlaying();
+}
+
+/* 爆弾で死亡したら時計音(lastBgm)は止める */
+function stopHypeBgmOnDeath(){
+  if(!lastBgm.paused) lastBgm.pause();
+  lastMode=false;
+}
 
 document.addEventListener("contextmenu", (e)=>e.preventDefault());
 document.getElementById("restart").onclick=init;
@@ -456,12 +467,14 @@ function placeEnemiesWithSafeZone(excludeR, excludeC){
     placed++;
   }
 
+  // エイリアン配置（安全マス）＋タイプ決定（★確率付き）
   while(true){
     const r=Math.floor(Math.random()*ROWS);
     const c=Math.floor(Math.random()*COLS);
     if(safe.has(key(r,c))) continue;
     if(board[r][c]===-1) continue;
     alienPos=[r,c];
+    alienType = pickAlienTypeWeighted(); // ★ここ
     break;
   }
 
@@ -529,7 +542,7 @@ function updateCellView(r,c){
   if(!opened[r][c]) return;
 
   if(isAlienCell(r,c)){
-    td.classList.add("open","alien");
+    td.classList.add("open","alien", "alien"+alienType);
     return;
   }
 
@@ -564,7 +577,10 @@ function floodOpen(sr,sc){
       if(seen.has(k)) continue;
       if(opened[nr][nc]) continue;
       if(flags[nr][nc]) continue;
+
+      // エイリアンは連鎖で開かない（クリック必須）
       if(isAlienCell(nr,nc)) continue;
+
       seen.add(k);
       q.push([nr,nc]);
     }
@@ -575,7 +591,7 @@ function openExtraRing(r,c,dist){
   for(let dr=-dist; dr<=dist; dr++){
     for(let dc=-dist; dc<=dist; dc++){
       const nr=r+dr, nc=c+dc;
-      if(!inBounds(nr,nc)) continue;
+      if(nr<0||nr>=ROWS||nc<0||nc>=COLS) continue;
       if(opened[nr][nc]) continue;
       opened[nr][nc]=true;
       updateCellView(nr,nc);
@@ -599,7 +615,9 @@ function openCell(r,c){
     opened[r][c]=true;
     updateCellView(r,c);
     play(alienSound);
-    statusEl.textContent="火星人だ！！！";
+
+    statusEl.textContent = ALIEN_MESSAGES[alienType] ?? "宇宙生命体だ！！！";
+
     checkStagesAndClear();
     return;
   }
@@ -607,9 +625,8 @@ function openCell(r,c){
   if(board[r][c]===-1){
     gameOver=true;
 
-    // 爆弾で死亡したら時計音もラスト1曲も止める（以前の要望維持）
-    clockBgm.pause();
-    lastOne.pause();
+    // 死亡で時計音は止める
+    stopHypeBgmOnDeath();
 
     explorer.src=IMG_DEATH;
     explorer.classList.add("captured");
@@ -625,12 +642,7 @@ function openCell(r,c){
     openExtraRing(r,c,EXTRA_RING_OPEN);
     refreshAll();
 
-    // 通常BGMは状況によって再開（残り1で止めるルールがあるので、ここではそのまま）
-    if(userBgmEnabled && bgmUnlocked){
-      // 死亡時は bgm を通常音量に戻して再生してOK（ただし既に止まってたら鳴らさない）
-      bgm.volume = BGM_VOL_NORMAL;
-      ensureBaseBgmPlaying();
-    }
+    ensureBgmPlaying();
     return;
   }
 
@@ -662,49 +674,19 @@ function setStage(stage){
   if(stage===3) game.classList.add("stage3");
 }
 
-/* ===== ここが「音」仕様の中核 ===== */
-let clockStarted=false;
-let lastOneStarted=false;
-let bgmLowered=false;
-
-function startClockIfNeeded(){
-  if(clockStarted) return;
-  if(!bgmUnlocked || !userBgmEnabled) return;
-  clockStarted=true;
-  clockBgm.play().catch(()=>{});
-}
-function startLastOneIfNeeded(){
-  if(lastOneStarted) return;
-  if(!bgmUnlocked || !userBgmEnabled) return;
-  lastOneStarted=true;
-  lastOne.play().catch(()=>{});
-}
-function lowerBgmIfNeeded(){
-  if(bgmLowered) return;
-  bgmLowered=true;
-  bgm.volume = BGM_VOL_LOW;
-}
-function stopBgmAtLastOne(){
-  // 残り1で bgm を消す
-  bgm.pause();
-}
+const HYPE_START = 5;
 
 function checkStagesAndClear(){
   const rem=remainingSafeCells();
 
-  // Stage1（残り<=5）開始
   if(rem<=HYPE_START && stageShown<1){
     stageShown=1;
     setStage(1);
     explorer.src=IMG_HYPE1;
     statusEl.textContent="早く宇宙船に戻らないと...!";
-
-    // ★要望：残り5から時計音スタート、bgm音量を小さく
-    startClockIfNeeded();
-    lowerBgmIfNeeded();
+    switchBgmMode(true);
   }
 
-  // Stage2（残り<=3）
   if(rem<=3 && stageShown<2){
     stageShown=2;
     setStage(2);
@@ -712,33 +694,23 @@ function checkStagesAndClear(){
     statusEl.textContent="早くしないと惑星が爆発するっ...!!!";
   }
 
-  // 残り2メッセージ
   if(rem===2 && stageShown===2){
     statusEl.textContent="あと少し....";
   }
 
-  // Stage3（残り<=1）
   if(rem<=1 && stageShown<3){
     stageShown=3;
     setStage(3);
     explorer.src=IMG_HYPE3;
     statusEl.textContent="早く脱出しないとおぉっっっ！！！";
     showHypeOnce("早く脱出しないとおぉっっっ！！！");
-
-    // ★要望：残り1で bgm を消して、lastOne + 時計音を同時に流す
-    stopBgmAtLastOne();
-    startClockIfNeeded();   // 念のため
-    startLastOneIfNeeded();
   }
 
-  // クリア
   if(rem===0 && !gameOver){
     gameOver=true;
-
-    // クリアでBGM停止（従来）
     stopAllBgm();
-
     setStage(0);
+
     statusEl.classList.add("clear");
     explorer.classList.remove("captured","perfect");
 
@@ -762,12 +734,16 @@ function checkStagesAndClear(){
 }
 
 function init(){
-  // 見た目/ゲーム状態はそのまま（従来）
+  lastMode=false;
+  ensureBgmPlaying();
+
   gameOver=false;
   usedFlag=false;
   started=false;
   stageShown=0;
+
   alienPos=null;
+  alienType=1;
 
   explorer.src=IMG_NORMAL;
   explorer.classList.remove("captured","perfect");
@@ -781,20 +757,6 @@ function init(){
   game.classList.remove("stage1","stage2","stage3");
   render();
   refreshAll();
-
-  // ★音状態リセット（ゲームやり直しで「残り5演出」前の状態に戻す）
-  clockStarted=false;
-  lastOneStarted=false;
-  bgmLowered=false;
-  clockBgm.pause(); clockBgm.currentTime=0;
-  lastOne.pause(); lastOne.currentTime=0;
-
-  // bgm は通常音量に戻して、鳴らすべきなら鳴らす（ユーザーONなら）
-  bgm.volume = BGM_VOL_NORMAL;
-  if(bgmUnlocked && userBgmEnabled){
-    ensureBaseBgmPlaying();
-  }
-
   setBgmButtonText();
 }
 

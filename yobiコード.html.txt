@@ -1,4 +1,3 @@
-```html
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -109,11 +108,15 @@ body{
   position:relative;
   transition:box-shadow .2s, outline .2s, transform .2s;
 }
+
+/* 1段階目（残り<=5）：薄い点滅 */
 #game.stage1{ animation:boardStage1 .9s infinite; }
 @keyframes boardStage1{
   0%,100%{filter:brightness(.55);}
   50%{filter:brightness(.95);}
 }
+
+/* 2段階目（残り<=3）：黄色枠チカチカ */
 #game.stage2{
   outline:3px solid rgba(255,215,0,.95);
   box-shadow:0 0 22px rgba(255,215,0,.65);
@@ -123,6 +126,8 @@ body{
   0%,100%{filter:brightness(.85) contrast(1.1);}
   50%{filter:brightness(1.35) contrast(1.35);}
 }
+
+/* 3段階目（残り<=1）：赤枠＋点滅 */
 #game.stage3{
   outline:4px solid rgba(255,60,60,.98);
   box-shadow:0 0 34px rgba(255,60,60,.75);
@@ -178,7 +183,14 @@ td{
 td.open{background:#33334d;cursor:default;}
 td.flag{background:#111144;color:#0f0;}
 td.enemy{background:black url("asteroid.jpeg") center/cover no-repeat;}
-td.alien{background:url("alien.jpeg") center/cover no-repeat;}
+
+/* エイリアン1〜5 */
+td.alien{ background-position:center; background-size:cover; background-repeat:no-repeat; }
+td.alien.alien1{ background-image:url("alien1.jpeg"); }
+td.alien.alien2{ background-image:url("alien2.jpeg"); }
+td.alien.alien3{ background-image:url("alien3.jpeg"); }
+td.alien.alien4{ background-image:url("alien4.jpeg"); }
+td.alien.alien5{ background-image:url("alien5.jpeg"); }
 
 .num1{color:#66ccff;}
 .num2{color:#33ff77;}
@@ -282,6 +294,27 @@ const IMG_DEATH    = "death.jpeg";
 
 const EXTRA_RING_OPEN = 3;
 
+/* エイリアン種類ごとのメッセージ（4は金ピカ） */
+const ALIEN_MESSAGES = {
+  1: "火星人だ！！！",
+  2: "宇宙人だ！！！",
+  3: "宇宙人だ！！！",
+  4: "金ピカの宇宙人だ！！！",
+  5: "あ、あの宇宙人は～！！！！！！"
+};
+
+/* ★確率でエイリアンタイプを選ぶ
+   1:50%, 2:24%, 3:20%, 4:5%, 5:1%（合計100%）
+*/
+function pickAlienTypeWeighted(){
+  const x = Math.random() * 100; // 0..100
+  if(x < 50) return 1;           // 50
+  if(x < 74) return 2;           // +24 = 74
+  if(x < 94) return 3;           // +20 = 94
+  if(x < 99) return 4;           // +5  = 99
+  return 5;                      // +1  = 100
+}
+
 let board=[], opened=[], flags=[];
 let gameOver=false;
 let usedFlag=false;
@@ -290,7 +323,8 @@ let started=false;
 let lastMode=false;
 let stageShown=0;
 
-let alienPos=null;
+let alienPos=null;       // [r,c]
+let alienType=1;         // 1..5
 
 const game=document.getElementById("game");
 const explorer=document.getElementById("explorer");
@@ -369,10 +403,10 @@ function switchBgmMode(toLast){
   ensureBgmPlaying();
 }
 
-/* ★追加修正：爆弾を踏んだら煽りBGM(lastBgm=時計音)は止める */
+/* 爆弾で死亡したら時計音(lastBgm)は止める */
 function stopHypeBgmOnDeath(){
   if(!lastBgm.paused) lastBgm.pause();
-  lastMode=false;          // 状態も通常に戻す
+  lastMode=false;
 }
 
 document.addEventListener("contextmenu", (e)=>e.preventDefault());
@@ -433,12 +467,14 @@ function placeEnemiesWithSafeZone(excludeR, excludeC){
     placed++;
   }
 
+  // エイリアン配置（安全マス）＋タイプ決定（★確率付き）
   while(true){
     const r=Math.floor(Math.random()*ROWS);
     const c=Math.floor(Math.random()*COLS);
     if(safe.has(key(r,c))) continue;
     if(board[r][c]===-1) continue;
     alienPos=[r,c];
+    alienType = pickAlienTypeWeighted(); // ★ここ
     break;
   }
 
@@ -506,7 +542,7 @@ function updateCellView(r,c){
   if(!opened[r][c]) return;
 
   if(isAlienCell(r,c)){
-    td.classList.add("open","alien");
+    td.classList.add("open","alien", "alien"+alienType);
     return;
   }
 
@@ -541,7 +577,10 @@ function floodOpen(sr,sc){
       if(seen.has(k)) continue;
       if(opened[nr][nc]) continue;
       if(flags[nr][nc]) continue;
+
+      // エイリアンは連鎖で開かない（クリック必須）
       if(isAlienCell(nr,nc)) continue;
+
       seen.add(k);
       q.push([nr,nc]);
     }
@@ -552,7 +591,7 @@ function openExtraRing(r,c,dist){
   for(let dr=-dist; dr<=dist; dr++){
     for(let dc=-dist; dc<=dist; dc++){
       const nr=r+dr, nc=c+dc;
-      if(!inBounds(nr,nc)) continue;
+      if(nr<0||nr>=ROWS||nc<0||nc>=COLS) continue;
       if(opened[nr][nc]) continue;
       opened[nr][nc]=true;
       updateCellView(nr,nc);
@@ -576,7 +615,9 @@ function openCell(r,c){
     opened[r][c]=true;
     updateCellView(r,c);
     play(alienSound);
-    statusEl.textContent="火星人だ！！！";
+
+    statusEl.textContent = ALIEN_MESSAGES[alienType] ?? "宇宙生命体だ！！！";
+
     checkStagesAndClear();
     return;
   }
@@ -584,7 +625,7 @@ function openCell(r,c){
   if(board[r][c]===-1){
     gameOver=true;
 
-    /* ★ここで時計音(lastBgm)を止める（要望） */
+    // 死亡で時計音は止める
     stopHypeBgmOnDeath();
 
     explorer.src=IMG_DEATH;
@@ -601,7 +642,6 @@ function openCell(r,c){
     openExtraRing(r,c,EXTRA_RING_OPEN);
     refreshAll();
 
-    // 通常BGMを再開（ユーザーがONなら）
     ensureBgmPlaying();
     return;
   }
@@ -634,10 +674,12 @@ function setStage(stage){
   if(stage===3) game.classList.add("stage3");
 }
 
+const HYPE_START = 5;
+
 function checkStagesAndClear(){
   const rem=remainingSafeCells();
 
-  if(rem<=10 && stageShown<1){
+  if(rem<=HYPE_START && stageShown<1){
     stageShown=1;
     setStage(1);
     explorer.src=IMG_HYPE1;
@@ -666,10 +708,9 @@ function checkStagesAndClear(){
 
   if(rem===0 && !gameOver){
     gameOver=true;
-
     stopAllBgm();
-
     setStage(0);
+
     statusEl.classList.add("clear");
     explorer.classList.remove("captured","perfect");
 
@@ -700,7 +741,9 @@ function init(){
   usedFlag=false;
   started=false;
   stageShown=0;
+
   alienPos=null;
+  alienType=1;
 
   explorer.src=IMG_NORMAL;
   explorer.classList.remove("captured","perfect");
@@ -721,4 +764,3 @@ init();
 </script>
 </body>
 </html>
-```
